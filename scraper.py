@@ -28,7 +28,7 @@ def create_rss():
     articles = soup.find_all('a', href=True)
     seen_urls = set()
     count = 0
-    max_articles = 15 # Henter de 15 nyeste for at scriptet skal kjøre raskt
+    max_articles = 15
     
     for article in articles:
         if count >= max_articles:
@@ -45,38 +45,57 @@ def create_rss():
                 
             full_url = urljoin(base_url, url)
             
-            # --- NYTT: Hent ingressen fra selve artikkelen ---
+            # Variabler for ingress og bilde
+            intro_text = "Les hele saken på nettsiden."
+            image_url = None
+            
             try:
-                # Laster ned selve artikkelen for å hente ut beskrivelsen
                 art_response = requests.get(full_url, headers=headers, timeout=5)
                 art_soup = BeautifulSoup(art_response.text, 'html.parser')
                 
-                # Finner 'meta description' som inneholder ingressen
+                # 1. Hent ingress (meta description)
                 meta_desc = art_soup.find('meta', attrs={'name': 'description'})
                 if meta_desc and meta_desc.get('content'):
                     intro_text = meta_desc['content']
                 else:
-                    # Fallback hvis meta mangler: Hent første avsnitt (<p>)
                     first_p = art_soup.find('p')
-                    intro_text = first_p.get_text(strip=True) if first_p else "Les hele saken på nettsiden."
+                    if first_p:
+                        intro_text = first_p.get_text(strip=True)
+                        
+                # 2. --- NYTT: Hent bilde (Open Graph Image) ---
+                meta_image = art_soup.find('meta', attrs={'property': 'og:image'})
+                if meta_image and meta_image.get('content'):
+                    image_url = meta_image['content']
+                    # Pass på at URL-en er komplett
+                    image_url = urljoin(base_url, image_url)
                     
             except Exception:
-                intro_text = "Les hele saken på nettsiden."
+                pass # Ignorerer feil hvis siden ikke laster, bruker standardtekst
             
-            # Liten pause (0.5 sek) for ikke å overbelaste NRCs servere
             time.sleep(0.5) 
-            # ------------------------------------------------
             
             fe = fg.add_entry()
             fe.title(title_text)
             fe.link(href=full_url)
-            fe.description(intro_text) # Ingressen legges inn i RSS-feeden
+            
+            # --- NYTT: Legg til bilde i RSS-leseren ---
+            if image_url:
+                # Metode A: Standard RSS enclosure (for avanserte lesere som Feedly)
+                # Vi bruker 'image/jpeg' som en universell standard
+                fe.enclosure(image_url, '0', 'image/jpeg')
+                
+                # Metode B: HTML-bilde direkte i teksten (for enkle lesere/nettlesere)
+                html_content = f'<img src="{image_url}" alt="{title_text}" style="max-width:100%; border-radius:8px; margin-bottom:12px;"/><br>{intro_text}'
+                fe.description(html_content)
+            else:
+                fe.description(intro_text)
+                
             fe.pubDate(datetime.now(pytz.utc))
             
             count += 1
             
     fg.rss_file('rss.xml')
-    print("Vellykket: rss.xml er opprettet med tittel og ingress!")
+    print("Vellykket: rss.xml er opprettet med tittel, ingress og bilde!")
 
 if __name__ == '__main__':
     create_rss()
