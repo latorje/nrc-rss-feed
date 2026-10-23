@@ -4,59 +4,79 @@ from feedgen.feed import FeedGenerator
 from datetime import datetime
 import pytz
 from urllib.parse import urljoin
+import time
 
 def create_rss():
     base_url = 'https://www.nrc.no'
     news_url = f'{base_url}/latest-news/'
     
-    # Vi utgir oss for å være en vanlig nettleser for ikke å bli blokkert
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     response = requests.get(news_url, headers=headers)
     
-    # Sjekk at nettsiden lastes inn riktig
     if response.status_code != 200:
         print(f"Feil ved henting av nettside. Status: {response.status_code}")
         return
 
     soup = BeautifulSoup(response.text, 'html.parser')
     
-    # Sett opp RSS-feeden
     fg = FeedGenerator()
     fg.title('NRC Latest News')
     fg.link(href=news_url, rel='alternate')
     fg.description('Automatisk generert RSS-feed for Flyktninghjelpen (NRC).')
     fg.language('en')
     
-    # Finn alle lenker på siden
     articles = soup.find_all('a', href=True)
     seen_urls = set()
+    count = 0
+    max_articles = 15 # Henter de 15 nyeste for at scriptet skal kjøre raskt
     
     for article in articles:
+        if count >= max_articles:
+            break
+            
         url = article['href']
         
-        # Filtrer kun lenker som peker til typiske nyhetsartikler eller pressemeldinger
-        # (Ekskluderer navigasjonsmenyer og donasjonssider)
         if any(keyword in url for keyword in ['/news/', '/press-releases/', '/perspectives/']) and url not in seen_urls:
             seen_urls.add(url)
             
-            # Prøv å finne tittelen på artikkelen. NRC bruker ofte h2, h3 eller bare tekst inni lenken.
             title_text = article.get_text(strip=True)
-            
-            # Hopp over tomme lenker (f.eks. bilde-lenker uten alt-tekst)
             if len(title_text) < 10:
                 continue
                 
             full_url = urljoin(base_url, url)
             
-            # Legg til artikkelen i RSS-feeden
+            # --- NYTT: Hent ingressen fra selve artikkelen ---
+            try:
+                # Laster ned selve artikkelen for å hente ut beskrivelsen
+                art_response = requests.get(full_url, headers=headers, timeout=5)
+                art_soup = BeautifulSoup(art_response.text, 'html.parser')
+                
+                # Finner 'meta description' som inneholder ingressen
+                meta_desc = art_soup.find('meta', attrs={'name': 'description'})
+                if meta_desc and meta_desc.get('content'):
+                    intro_text = meta_desc['content']
+                else:
+                    # Fallback hvis meta mangler: Hent første avsnitt (<p>)
+                    first_p = art_soup.find('p')
+                    intro_text = first_p.get_text(strip=True) if first_p else "Les hele saken på nettsiden."
+                    
+            except Exception:
+                intro_text = "Les hele saken på nettsiden."
+            
+            # Liten pause (0.5 sek) for ikke å overbelaste NRCs servere
+            time.sleep(0.5) 
+            # ------------------------------------------------
+            
             fe = fg.add_entry()
             fe.title(title_text)
             fe.link(href=full_url)
-            fe.pubDate(datetime.now(pytz.utc)) # Setter dagens dato
+            fe.description(intro_text) # Ingressen legges inn i RSS-feeden
+            fe.pubDate(datetime.now(pytz.utc))
             
-    # Lagre som en XML-fil
+            count += 1
+            
     fg.rss_file('rss.xml')
-    print("Vellykket: rss.xml er opprettet!")
+    print("Vellykket: rss.xml er opprettet med tittel og ingress!")
 
 if __name__ == '__main__':
     create_rss()
