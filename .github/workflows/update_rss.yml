@@ -1,0 +1,35 @@
+name: Oppdater NRC RSS Feed
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Kjører automatisk hver 6. time
+  workflow_dispatch:      # Gjør at du kan klikke "Run workflow" manuelt i GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # Nødvendig for at Actionen skal få lov til å lagre filen
+
+    steps:
+    - name: Hent koden
+      uses: actions/checkout@v4
+
+    - name: Sett opp Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Installer avhengigheter
+      run: pip install -r requirements.txt
+
+    - name: Kjør scraperen
+      run: python scraper.py
+
+    - name: Lagre og push rss.xml
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add rss.xml
+        # Sjekk om det er nye endringer. Hvis ja, lagre og last opp (commit & push)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Automatisk oppdatering av RSS-feed" && git push)
