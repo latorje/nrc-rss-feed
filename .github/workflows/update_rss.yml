@@ -31,4 +31,4 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add rss.xml
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Automatisk oppdatering av RSS-feed" && git push)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Automatisk oppdatering av RSS-feed" && git pull --rebase origin main && git push)
