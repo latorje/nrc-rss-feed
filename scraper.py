@@ -39,7 +39,7 @@ def create_rss():
         if any(keyword in url for keyword in ['/news/', '/press-releases/', '/perspectives/']) and url not in seen_urls:
             seen_urls.add(url)
             
-            title_text = article.get_text(strip=True)
+            title_text = article.get_text(separator=' - ', strip=True)
             if len(title_text) < 10:
                 continue
                 
